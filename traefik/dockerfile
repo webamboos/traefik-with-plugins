@@ -21,6 +21,8 @@ ARG PLUGIN_SABLIER_VERSION
 FROM golang:1.25-alpine3.22 AS builder
 
 # Re-declare ARGs after FROM to make them available in this stage
+ARG TARGETOS
+ARG TARGETARCH
 ARG TRAEFIK_REPO
 ARG TRAEFIK_VERSION
 ARG PLUGIN_MODSECURITY_REPO
@@ -125,17 +127,20 @@ RUN set -eux; \
 # Build Traefik binary with embedded plugins (WebUI gets embedded via go:embed)
 WORKDIR /build/traefik
 RUN set -eux; \
-    mkdir -p dist/linux/amd64 && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -installsuffix nocgo -o "./dist/linux/amd64/traefik" ./cmd/traefik
+    mkdir -p "dist/${TARGETOS}/${TARGETARCH}" && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "-s -w" -installsuffix nocgo -o "./dist/${TARGETOS}/${TARGETARCH}/traefik" ./cmd/traefik
 
 # Stage 2: Final runtime image
 FROM alpine:3.22
+
+ARG TARGETOS
+ARG TARGETARCH
 
 RUN set -eux; \
     apk add --no-cache --no-progress ca-certificates tzdata
 
 # Copy the built binary from builder stage (WebUI is already embedded inside via go:embed)
-COPY --from=builder /build/traefik/dist/linux/amd64/traefik /traefik
+COPY --from=builder /build/traefik/dist/${TARGETOS}/${TARGETARCH}/traefik /traefik
 
 # Copy ALL plugin assets for runtime - using dynamic paths from build stage
 # Note: Since COPY doesn't support shell expansion, we need to copy the entire plugins-local tree
