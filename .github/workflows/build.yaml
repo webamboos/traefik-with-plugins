@@ -103,6 +103,9 @@ jobs:
       IMAGE_NAME: ${{ github.repository_owner }}/traefik-with-plugins
       TAG: ${{ github.ref_name }}
     steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Login to GHCR
         uses: docker/login-action@v4
         with:
@@ -117,11 +120,13 @@ jobs:
           ARM64_IMAGE="${REGISTRY}/${IMAGE_NAME}:${TAG}-arm64"
           TARGET_IMAGE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
 
-          docker manifest create ${TARGET_IMAGE} \
-            --amend ${AMD64_IMAGE} \
-            --amend ${ARM64_IMAGE}
+          docker buildx imagetools create \
+            -t ${TARGET_IMAGE} \
+            ${AMD64_IMAGE} \
+            ${ARM64_IMAGE}
 
-          DIGEST=$(docker manifest push ${TARGET_IMAGE})
+          # Capture the digest of the manifest list for attestation
+          DIGEST=$(docker buildx imagetools inspect ${TARGET_IMAGE} --format '{{json .Manifest}}' | jq -r '.digest')
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
 
       - name: Generate artifact attestation
@@ -130,34 +135,6 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
           push-to-registry: true
-
-      - name: Cleanup arch-specific tags
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          OWNER="${GITHUB_REPOSITORY_OWNER}"
-          PKG_NAME="traefik-with-plugins"
-
-          # Determine if owner is an org or a user
-          if gh api "/orgs/${OWNER}" > /dev/null 2>&1; then
-            ENDPOINT="/orgs/${OWNER}/packages/container/${PKG_NAME}/versions"
-          else
-            ENDPOINT="/users/${OWNER}/packages/container/${PKG_NAME}/versions"
-          fi
-
-          # Find and delete package versions tagged with the arch-specific tags
-          VERSION_IDS=$(gh api "${ENDPOINT}" --paginate --jq \
-            ".[] | select(.metadata.container.tags[] | test(\"${TAG}-(amd64|arm64)\$\")) | .id")
-
-          if [ -z "$VERSION_IDS" ]; then
-            echo "No arch-specific tags found to cleanup."
-            exit 0
-          fi
-
-          for VERSION_ID in $VERSION_IDS; do
-            echo "Deleting package version ${VERSION_ID}"
-            gh api --method DELETE "${ENDPOINT}/${VERSION_ID}"
-          done
 
   create_release:
     name: Create GitHub Release
