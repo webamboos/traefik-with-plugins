@@ -1,4 +1,4 @@
-# Multi-stage build for Traefik with embedded plugins  
+# Multi-stage build for Traefik with embedded plugins
 # This dockerfile builds Traefik from source with plugins compiled directly into the binary
 # Versions are controlled via versions.env
 
@@ -18,7 +18,7 @@ ARG PLUGIN_SABLIER_REPO
 ARG PLUGIN_SABLIER_VERSION
 
 # Stage 1: Build stage with Go and Git
-FROM golang:1.25-alpine3.22 AS builder
+FROM golang:1.26-alpine3.23 AS builder
 
 # Re-declare ARGs after FROM to make them available in this stage
 ARG TARGETOS
